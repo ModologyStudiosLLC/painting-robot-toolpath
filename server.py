@@ -13,6 +13,7 @@ Then open http://raspberrypi.local:5000 (or the Pi's IP) in any browser.
 
 import argparse
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -31,27 +32,9 @@ app = Flask(__name__)
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# ── Notification ─────────────────────────────────────────────────────────────
-# Uses ntfy.sh — free, no account needed.
-# Install app on phone → subscribe to your topic → pass URL via --notify flag.
-# Example: --notify https://ntfy.sh/my-painting-robot-abc123
+# ── Notifications (Discord) ───────────────────────────────────────────────────
 
-_notify_url = ""
-
-
-def send_notification(title: str, message: str) -> None:
-    if not _notify_url:
-        return
-    try:
-        req = urllib.request.Request(
-            _notify_url,
-            data=message.encode(),
-            headers={"Title": title, "Priority": "high", "Tags": "paintbrush"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass  # never block the robot over a notification failure
+import discord_notify as _discord
 
 
 # ── Multi-pass job state ──────────────────────────────────────────────────────
@@ -169,21 +152,18 @@ def grbl_stream(lines: list[str]):
                     "next_name": next_pass["name"],
                     "next_color": next_pass.get("color", ""),
                 }))
-                send_notification(
-                    f"Pass {_job_current + 1}/{len(_job_passes)} done — swap pen",
-                    f"Swap to: {next_pass.get('color', next_pass['name'])}. "
-                    f"Tap Ready in the web UI when done.",
+                _discord.send_pass_complete(
+                    pass_num=_job_current + 1,
+                    total=len(_job_passes),
+                    next_color=next_pass.get("color", next_pass["name"]),
+                    next_name=next_pass["name"],
                 )
             else:
                 _job_status = "done"
                 push_event("job", json.dumps({"status": "done", "total": len(_job_passes)}))
-                send_notification(
-                    "Painting complete",
-                    f"All {len(_job_passes)} passes finished. Your painting is ready.",
-                )
+                _discord.send_job_done(len(_job_passes))
         else:
-            # Single-file run (no job loaded)
-            send_notification("Pass complete", "Painting robot finished.")
+            _discord.send_simple("Painting robot: pass complete.")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -561,16 +541,26 @@ if __name__ == "__main__":
     parser.add_argument("--port-http", type=int, default=5000, help="HTTP port (default 5000)")
     parser.add_argument("--port", default="", help="Auto-connect to this serial port on startup")
     parser.add_argument("--baud", type=int, default=115200)
-    parser.add_argument("--notify", default="", metavar="URL",
-                        help="ntfy.sh topic URL for push notifications "
-                             "(e.g. https://ntfy.sh/my-robot-abc123). "
-                             "Install the ntfy app on your phone and subscribe to the same topic.")
+    parser.add_argument("--discord-token", default=os.environ.get("DISCORD_BOT_TOKEN", ""),
+                        help="Discord bot token (or set DISCORD_BOT_TOKEN env var)")
+    parser.add_argument("--discord-channel", default="1500616786033381530",
+                        help="Discord channel ID for notifications")
     args = parser.parse_args()
 
-    if args.notify:
-        global _notify_url
-        _notify_url = args.notify
-        print(f"Notifications enabled → {args.notify}")
+    def _next_pass_callback():
+        with app.test_request_context():
+            job_next()
+
+    def _stop_job_callback():
+        _stream_stop.set()
+
+    _discord.configure(
+        token=args.discord_token,
+        channel_id=args.discord_channel,
+        on_next_pass=_next_pass_callback,
+        on_stop_job=_stop_job_callback,
+    )
+    print(f"Discord notifications → channel {args.discord_channel}")
 
     if args.port:
         try:
