@@ -12,11 +12,13 @@ Then open http://raspberrypi.local:5000 (or the Pi's IP) in any browser.
 """
 
 import argparse
+import json
 import queue
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +30,44 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# ── Notification ─────────────────────────────────────────────────────────────
+# Uses ntfy.sh — free, no account needed.
+# Install app on phone → subscribe to your topic → pass URL via --notify flag.
+# Example: --notify https://ntfy.sh/my-painting-robot-abc123
+
+_notify_url = ""
+
+
+def send_notification(title: str, message: str) -> None:
+    if not _notify_url:
+        return
+    try:
+        req = urllib.request.Request(
+            _notify_url,
+            data=message.encode(),
+            headers={"Title": title, "Priority": "high", "Tags": "paintbrush"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # never block the robot over a notification failure
+
+
+# ── Multi-pass job state ──────────────────────────────────────────────────────
+
+_job_lock = threading.Lock()
+_job_passes: list[dict] = []   # [{"name": str, "gcode": str, "color": str}, ...]
+_job_current: int = -1         # index of active pass, -1 = no job loaded
+_job_status: str = "idle"      # idle | ready | running | awaiting_swap | done
+
+
+def _job_title() -> str:
+    if not _job_passes:
+        return ""
+    p = _job_passes[_job_current] if 0 <= _job_current < len(_job_passes) else {}
+    return p.get("name", f"Pass {_job_current + 1}")
+
 
 # ── Serial state ──────────────────────────────────────────────────────────────
 
@@ -114,6 +154,36 @@ def grbl_stream(lines: list[str]):
 
     push_event("status", "done")
     push_event("progress", f"{total}/{total}")
+
+    with _job_lock:
+        global _job_current, _job_status
+        if _job_current >= 0 and _job_passes:
+            next_idx = _job_current + 1
+            if next_idx < len(_job_passes):
+                next_pass = _job_passes[next_idx]
+                _job_status = "awaiting_swap"
+                push_event("job", json.dumps({
+                    "status": "awaiting_swap",
+                    "completed": _job_current + 1,
+                    "total": len(_job_passes),
+                    "next_name": next_pass["name"],
+                    "next_color": next_pass.get("color", ""),
+                }))
+                send_notification(
+                    f"Pass {_job_current + 1}/{len(_job_passes)} done — swap pen",
+                    f"Swap to: {next_pass.get('color', next_pass['name'])}. "
+                    f"Tap Ready in the web UI when done.",
+                )
+            else:
+                _job_status = "done"
+                push_event("job", json.dumps({"status": "done", "total": len(_job_passes)}))
+                send_notification(
+                    "Painting complete",
+                    f"All {len(_job_passes)} passes finished. Your painting is ready.",
+                )
+        else:
+            # Single-file run (no job loaded)
+            send_notification("Pass complete", "Painting robot finished.")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -358,6 +428,131 @@ def events():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+# ── Multi-pass job routes ─────────────────────────────────────────────────────
+
+@app.route("/job/load", methods=["POST"])
+def job_load():
+    """Load a multi-pass job.
+
+    POST body (JSON):
+      {"passes": [{"name": "Background hatch", "gcode": "uploads/bg.gcode", "color": "Raw Sienna"}, ...]}
+
+    Or load from a .json file:
+      {"file": "uploads/my_painting.json"}
+    """
+    global _job_passes, _job_current, _job_status
+    data = request.get_json(force=True)
+
+    if "file" in data:
+        p = Path(data["file"])
+        if not p.exists():
+            return jsonify(ok=False, error=f"Job file not found: {p}"), 400
+        try:
+            data = json.loads(p.read_text())
+        except Exception as e:
+            return jsonify(ok=False, error=f"Invalid JSON: {e}"), 400
+
+    passes = data.get("passes", [])
+    if not passes:
+        return jsonify(ok=False, error="Job must have at least one pass"), 400
+
+    for i, p in enumerate(passes):
+        if "gcode" not in p:
+            return jsonify(ok=False, error=f"Pass {i} missing 'gcode' field"), 400
+        if not Path(p["gcode"]).exists():
+            return jsonify(ok=False, error=f"G-code not found: {p['gcode']}"), 400
+
+    with _job_lock:
+        _job_passes = passes
+        _job_current = 0
+        _job_status = "ready"
+
+    push_event("job", json.dumps({
+        "status": "ready",
+        "total": len(passes),
+        "current": 0,
+        "name": passes[0]["name"],
+        "color": passes[0].get("color", ""),
+    }))
+    return jsonify(ok=True, total=len(passes), first=passes[0]["name"])
+
+
+@app.route("/job/status")
+def job_status():
+    with _job_lock:
+        p = _job_passes[_job_current] if 0 <= _job_current < len(_job_passes) else {}
+        return jsonify(
+            status=_job_status,
+            current=_job_current,
+            total=len(_job_passes),
+            pass_name=p.get("name", ""),
+            pass_color=p.get("color", ""),
+        )
+
+
+@app.route("/job/start", methods=["POST"])
+def job_start():
+    """Start the first pass of the loaded job."""
+    global _stream_thread, _job_status
+    with _job_lock:
+        if _job_status != "ready":
+            return jsonify(ok=False, error=f"Job not ready (status: {_job_status})"), 400
+        gcode_path = _job_passes[_job_current]["gcode"]
+
+    with _serial_lock:
+        if _serial is None or not _serial.is_open:
+            return jsonify(ok=False, error="Not connected"), 400
+
+    if _stream_thread and _stream_thread.is_alive():
+        return jsonify(ok=False, error="Already streaming"), 400
+
+    lines = Path(gcode_path).read_text().splitlines()
+    _stream_stop.clear()
+    with _job_lock:
+        _job_status = "running"
+    _stream_thread = threading.Thread(target=grbl_stream, args=(lines,), daemon=True)
+    _stream_thread.start()
+    return jsonify(ok=True, pass_name=_job_passes[_job_current]["name"])
+
+
+@app.route("/job/next", methods=["POST"])
+def job_next():
+    """Confirm pen swap and start the next pass."""
+    global _stream_thread, _job_current, _job_status
+    with _job_lock:
+        if _job_status != "awaiting_swap":
+            return jsonify(ok=False, error=f"Not waiting for swap (status: {_job_status})"), 400
+        _job_current += 1
+        gcode_path = _job_passes[_job_current]["gcode"]
+        _job_status = "running"
+        pass_name = _job_passes[_job_current]["name"]
+
+    with _serial_lock:
+        if _serial is None or not _serial.is_open:
+            return jsonify(ok=False, error="Not connected"), 400
+
+    if _stream_thread and _stream_thread.is_alive():
+        return jsonify(ok=False, error="Already streaming"), 400
+
+    # Home before next pass so registration is exact
+    with _serial_lock:
+        _serial.write(b"$H\n")
+        _serial.flush()
+    time.sleep(3)   # let homing cycle complete
+
+    lines = Path(gcode_path).read_text().splitlines()
+    _stream_stop.clear()
+    _stream_thread = threading.Thread(target=grbl_stream, args=(lines,), daemon=True)
+    _stream_thread.start()
+    push_event("job", json.dumps({
+        "status": "running",
+        "current": _job_current,
+        "total": len(_job_passes),
+        "name": pass_name,
+    }))
+    return jsonify(ok=True, pass_name=pass_name)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -366,7 +561,16 @@ if __name__ == "__main__":
     parser.add_argument("--port-http", type=int, default=5000, help="HTTP port (default 5000)")
     parser.add_argument("--port", default="", help="Auto-connect to this serial port on startup")
     parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument("--notify", default="", metavar="URL",
+                        help="ntfy.sh topic URL for push notifications "
+                             "(e.g. https://ntfy.sh/my-robot-abc123). "
+                             "Install the ntfy app on your phone and subscribe to the same topic.")
     args = parser.parse_args()
+
+    if args.notify:
+        global _notify_url
+        _notify_url = args.notify
+        print(f"Notifications enabled → {args.notify}")
 
     if args.port:
         try:
