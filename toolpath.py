@@ -32,7 +32,7 @@ CANVAS_W_MM   = 1220    # 48 inches = 4 feet
 CANVAS_H_MM   = 1524    # 60 inches = 5 feet
 FEED_DRAW     = 3000    # mm/min while pen is down
 FEED_TRAVEL   = 8000    # mm/min while pen is up (rapid)
-BACKLASH_MM   = 0.4     # pre-approach overshoot to eliminate belt backlash
+BACKLASH_MM   = 0.4     # pre-approach overshoot to eliminate belt backlash (XY)
 PEN_DOWN_DWELL = 0.10   # seconds for servo to reach canvas
 PEN_UP_DWELL   = 0.05   # seconds for servo to clear canvas
 MIN_CONTOUR_PX = 5      # ignore contours shorter than this (noise filter)
@@ -244,8 +244,11 @@ def generate_gcode(contours, out_path, feed_draw, feed_travel, backlash,
         x0, y0 = contour[0]
 
         lines.append(f"; [{i+1}/{len(contours)}]")
-        # Backlash pre-approach: overshoot to the left, then approach from left
-        lines.append(f"G0 F{feed_travel} X{x0 - backlash:.3f} Y{y0:.3f}")
+        # Backlash pre-approach: overshoot in -X and -Y, then arrive from lower-left.
+        # Compensates belt play in both axes. Clamped to 0 to stay on canvas.
+        x_pre = max(0.0, x0 - backlash)
+        y_pre = max(0.0, y0 - backlash)
+        lines.append(f"G0 F{feed_travel} X{x_pre:.3f} Y{y_pre:.3f}")
         lines.append(f"G0 X{x0:.3f} Y{y0:.3f}")
         if pen_down_dwell > 0:
             lines.append(f"G4 P{pen_down_dwell:.2f}")
@@ -309,7 +312,7 @@ def main():
     p.add_argument("--feed-draw",   type=int,   default=FEED_DRAW,   metavar="MM/MIN")
     p.add_argument("--feed-travel", type=int,   default=FEED_TRAVEL, metavar="MM/MIN")
     p.add_argument("--backlash",    type=float, default=BACKLASH_MM, metavar="MM",
-                   help="Backlash pre-approach distance (default 0.4mm — tune per machine)")
+                   help="Backlash pre-approach distance in X and Y (default 0.4mm — tune per machine)")
 
     # edges options
     p.add_argument("--canny-low",  type=int, default=50,  metavar="N", help="Canny low threshold (default 50)")

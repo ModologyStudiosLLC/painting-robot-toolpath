@@ -8,9 +8,11 @@ This list matches the Modology Studios build exactly. Substitutions are noted wh
 
 ## Frame & Motion
 
+> **Hardware sourcing:** metal railing, V-slot extrusion, and motion hardware are available from **makerstore.cc** — same supplier used in the original build this project references.
+
 | Part | Qty | Est. Cost | Notes |
 |---|---|---|---|
-| OpenBuilds C-beam linear actuator 1500mm | 1 | $65 | X-axis — openbuildspartstore.com |
+| OpenBuilds C-beam linear actuator 1500mm | 1 | $65 | X-axis — openbuildspartstore.com or makerstore.cc |
 | OpenBuilds C-beam linear actuator 1200mm | 2 | $55 ea | Y-axis (both sides) |
 | OpenBuilds V-slot gantry plate (universal) | 3 | $10 ea | 1× X-carriage, 2× Y-carriage |
 | GT2 timing belt 6mm, 3m length | 2 | $9 ea | Any reputable brand |
@@ -170,6 +172,15 @@ $131=1220  ; Y max travel, mm (canvas height)
 > **Important:** `$32=1` (laser mode) is required so M3/M5 fire without needing a G1 move. Without this, your pen commands will be silently ignored.
 
 ---
+
+## Belt Span and Backlash
+
+The single biggest source of registration error on a large-format belt-driven machine is belt sag from long unsupported spans. Key rules:
+
+- **Keep idler-to-motor spans as short as possible.** Every extra 100mm of unsupported belt adds measurable play at the carriage.
+- **Tension to ~3Hz pluck frequency** (pluck the belt like a guitar string, measure with a phone tuner app). Under-tensioned belts register poorly; over-tensioned belts wear pulleys and load motor bearings.
+- **Do not convert to direct drive** to solve backlash — a 1:5 gear ratio change multiplies any remaining play by 5×. Belt + proper tension is the correct architecture for a machine this size.
+- Software backlash compensation (`--backlash` in toolpath.py) approaches every pen-down point from the `-X, -Y` direction to consistently take up belt play. Tune this value (typical range 0.2–0.6mm) by printing a test circle and measuring the seam gap.
 
 ## Backlash Tuning
 
