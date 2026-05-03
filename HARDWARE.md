@@ -46,6 +46,39 @@ This list matches the Modology Studios build exactly. Substitutions are noted wh
 
 ---
 
+## Sheet Metal Pen Carriage (Recommended)
+
+Nerdtronic's production design uses a single laser-cut + bent aluminum sheet metal blank instead of 3D printed parts. This eliminates the warping and registration drift that occurs with PETG over long paintings.
+
+The flat pattern file is included in this repo: **`pen_carriage_sheetmetal.dxf`**
+
+**Order from [sendcutsend.com](https://sendcutsend.com):**
+
+| Field | Value |
+|---|---|
+| File | `pen_carriage_sheetmetal.dxf` |
+| Material | 5052-H32 Aluminum |
+| Thickness | 1.5 mm |
+| Operations | Deburr all edges + Bend 3× 90° |
+| Bend — left + right flanges | 25 mm height, 2 mm inside radius |
+| Bend — top flange (servo mount) | 28 mm height, 2 mm inside radius |
+| Quantity | 1 |
+| Est. cost | ~$35–45 shipped |
+
+The blank is 127.8 × 111.9 mm (includes bend allowance). Blue dashed lines in the DXF are bend lines.
+
+**Holes included:**
+- 4× M5 clearance (5.3 mm) — gantry mount, 40 mm square grid
+- Ø14 mm pen bore — centre of back plate
+- 4× M3 clearance (3.2 mm) — pen clamp bolt circle, 12 mm radius, 45°
+- 4× Ø4.2 mm — 4 mm linear rod clearance, 2 per side flange
+- 2× M2 clearance (2.2 mm) — SG90 servo mount
+- 1× 6 × 12 mm slot — servo output shaft
+
+**Rubber band compliance:** Loop a #64 rubber band around the marker body and the carriage frame. This is Nerdtronic's compliance mechanism — when the pen contacts the canvas, the rubber band absorbs Z-axis force rather than transmitting it to the servo and carriage. It prevents tip damage on uneven canvas surfaces and eliminates the need for precise servo positioning. The rubber band shock absorber bracket (printed below) holds the band in place.
+
+---
+
 ## 3D Printed Parts
 
 Print all parts on a Bambu Lab X1C (or equivalent). PETG for structural parts, PLA for covers and cable management.
@@ -62,7 +95,7 @@ Print all parts on a Bambu Lab X1C (or equivalent). PETG for structural parts, P
 | Frame corner brackets × 4 | PETG | 0.20mm, 5 walls, 30% gyroid | 45min each |
 | Cable chain mounts × 6 | PLA | 0.20mm, 3 walls | 20min each |
 
-> **Nerdtronic lesson:** the pen carriage warps under its own weight after extended use, causing 1–2mm registration error. Embed M3 brass heat-set inserts for all fastener points, or upgrade to an aluminum plate carriage for long paintings.
+> **Note:** The 3D printed pen carriage body warps under its own weight after extended use, causing 1–2mm registration error. Use the sheet metal carriage above for long paintings. If printing: embed M3 brass heat-set inserts at all fastener points.
 
 **Total filament:** ~600g PETG, ~100g PLA
 
@@ -72,11 +105,18 @@ Print all parts on a Bambu Lab X1C (or equivalent). PETG for structural parts, P
 
 | Part | Qty | Est. Cost | Notes |
 |---|---|---|---|
-| T5 acrylic paint pens 0.7mm (12-pack) | 2 | $28 ea | **Modify for constant flow** — see below |
+| Molotow Acrylic pump marker 2mm (set) | 1 | $40–60 | **Recommended — no modification needed.** Nerdtronic's current choice. |
+| T5 acrylic paint pens 0.7mm (12-pack) | 2 | $28 ea | Budget option — **requires valve modification** (see below) |
 | Pre-stretched canvas 48×60 inch | 1 | $45 | Museum quality; or use MDF + gesso |
 | Gesso (if using MDF) | 1 | $12 | 2 coats, let dry 24h before painting |
 
-### Paint pen modification (required)
+### Molotow acrylic pump markers (recommended)
+
+Nerdtronic switched to Molotow acrylic pump markers for his painting robot. These have a pump valve that releases paint with minimal tip pressure — the rubber band compliance mechanism is enough to activate flow without a valve mod. They produce cleaner lines and don't dry out mid-painting the way T5 pens do.
+
+The 2mm tip fits the 14 mm bore in the sheet metal carriage. Secure with the M3 clamp block.
+
+### T5 paint pen modification (if using T5 instead)
 
 T5 pens have a valve that only flows when the tip is pressed. The robot can't press hard enough without damaging the canvas. Fix:
 
@@ -84,8 +124,6 @@ T5 pens have a valve that only flows when the tip is pressed. The robot can't pr
 2. Use a 1mm drill bit to puncture the internal membrane — 3 holes in a triangle pattern
 3. Reassemble carefully
 4. Test: invert pen — paint should flow freely without pressing
-
-This is the same modification Nerdtronic used on his painting robot.
 
 ---
 

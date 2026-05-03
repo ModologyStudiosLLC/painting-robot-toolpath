@@ -136,7 +136,9 @@ This toolpath generator was built for:
 
 - **Frame:** OpenBuilds C-beam V-slot linear actuators (same as Nerdtronic's painting robot)
 - **Motion:** NEMA 17 17HS19-2004S × 3, GT2 belt, A4988 drivers, GRBL 1.1 on Arduino Uno
-- **Pen:** T5 acrylic paint pens (valve modified for constant flow — drill 3 holes in membrane)
+- **Pen carriage:** Sheet metal flat blank (5052-H32 aluminum, 1.5mm, laser-cut + 3× 90° bends) — see `pen_carriage_sheetmetal.dxf` for SendCutSend upload
+- **Pen:** Molotow acrylic pump markers 2mm (recommended) or T5 pens with valve mod
+- **Compliance:** Rubber band looped around marker and carriage frame — absorbs Z-axis contact force
 - **Canvas:** 4×5ft (1220 × 1524 mm) pre-stretched or MDF + gesso
 - **Controller:** CNC Shield v3 on Arduino Uno, Universal G-Code Sender on Raspberry Pi 4B
 
