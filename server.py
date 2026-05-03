@@ -12,17 +12,18 @@ Then open http://raspberrypi.local:5000 (or the Pi's IP) in any browser.
 """
 
 import argparse
-import os
 import queue
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import serial
 import serial.tools.list_ports
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 UPLOAD_DIR = Path(__file__).parent / "uploads"
@@ -31,7 +32,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 # ── Serial state ──────────────────────────────────────────────────────────────
 
 _serial_lock = threading.Lock()
-_serial: serial.Serial | None = None
+_serial: Optional[serial.Serial] = None
 _connected_port = ""
 
 # ── SSE fan-out ───────────────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ def push_event(event: str, data: str):
 
 # ── GRBL streaming ────────────────────────────────────────────────────────────
 
-_stream_thread: threading.Thread | None = None
+_stream_thread: Optional[threading.Thread] = None
 _stream_stop = threading.Event()
 
 
@@ -82,6 +83,7 @@ def grbl_stream(lines: list[str]):
             _serial.flush()
 
         # wait for ok or error
+        got_ok = False
         deadline = time.time() + 30
         while time.time() < deadline:
             if _stream_stop.is_set():
@@ -96,11 +98,16 @@ def grbl_stream(lines: list[str]):
                 time.sleep(0.005)
                 continue
             if resp.startswith("ok"):
+                got_ok = True
                 break
             if resp.startswith("error"):
                 push_event("error", f"GRBL error on line {sent+1}: {resp}")
                 return
             # status reports or other — ignore, keep waiting
+
+        if not got_ok:
+            push_event("error", f"Timeout waiting for GRBL ack on line {sent+1}")
+            return
 
         sent += 1
         push_event("progress", f"{sent}/{total}")
@@ -135,15 +142,18 @@ def connect():
     with _serial_lock:
         if _serial and _serial.is_open:
             _serial.close()
-        try:
-            _serial = serial.Serial(port, baud, timeout=2)
-            time.sleep(2)           # wait for GRBL boot
-            _serial.flushInput()
-            _connected_port = port
-        except Exception as e:
-            _serial = None
-            _connected_port = ""
-            return jsonify(ok=False, error=str(e)), 400
+
+    try:
+        new_ser = serial.Serial(port, baud, timeout=2)
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 400
+
+    time.sleep(2)       # wait for GRBL boot — outside lock so other requests don't block
+    new_ser.flushInput()
+
+    with _serial_lock:
+        _serial = new_ser
+        _connected_port = port
 
     push_event("status", "connected")
     return jsonify(ok=True, port=port)
@@ -175,7 +185,10 @@ def generate():
         return jsonify(ok=False, error="No image uploaded"), 400
 
     f = request.files["image"]
-    img_path = UPLOAD_DIR / f.filename
+    if not f.filename:
+        return jsonify(ok=False, error="Uploaded file has no name"), 400
+
+    img_path = UPLOAD_DIR / secure_filename(f.filename)
     f.save(img_path)
 
     mode         = request.form.get("mode", "edges")
@@ -223,6 +236,9 @@ def generate():
 
     if result.returncode != 0:
         return jsonify(ok=False, error=result.stderr.strip() or "toolpath.py failed"), 500
+
+    if not out_path.exists():
+        return jsonify(ok=False, error="toolpath.py exited successfully but wrote no .gcode file"), 500
 
     lines = out_path.read_text().splitlines()
     gcode_lines = [l for l in lines if l.strip() and not l.strip().startswith(";")]
@@ -353,16 +369,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.port:
-        import json
-        with app.test_request_context():
-            # warm connect on startup
-            pass
-        import requests as _req
         try:
-            _req.post(f"http://localhost:{args.port_http}/connect",
-                      json={"port": args.port, "baud": args.baud})
-        except Exception:
-            pass
+            new_ser = serial.Serial(args.port, args.baud, timeout=2)
+            time.sleep(2)
+            new_ser.flushInput()
+            with _serial_lock:
+                _serial = new_ser
+                _connected_port = args.port
+            print(f"Auto-connected to {args.port}")
+        except Exception as e:
+            print(f"Auto-connect to {args.port} failed: {e}")
 
     print(f"Painting Robot server at http://{args.host}:{args.port_http}")
     app.run(host=args.host, port=args.port_http, threaded=True)
