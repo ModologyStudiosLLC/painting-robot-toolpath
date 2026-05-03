@@ -34,7 +34,7 @@ This list matches the Modology Studios build exactly. Substitutions are noted wh
 | NEMA 17 stepper motor 17HS19-2004S (2A) | 3 | $12 ea | X-axis × 1, Y-axis × 2 |
 | Micro servo SG90 or MG90S | 1 | $5 | Pen lift — wired to GRBL spindle PWM |
 | Mechanical end stop switch w/ PCB | 4 | $2 ea | X-min, X-max, Y-min, Y-max |
-| 12V 5A power supply (5.5×2.1mm barrel) | 1 | $18 | Powers steppers + Arduino via CNC shield |
+| 12V 5A power supply (5.5×2.1mm barrel) | 1 | $18 | Powers steppers + Arduino via CNC shield. **Alt:** USB-C PD trigger board (DIP switches → 12V) + 45W PD charger + mini buck converter trimmed to 5.2V for Pi — cleaner and one less wall wart |
 | Raspberry Pi 4B 2GB | 1 | $45 | Runs Universal G-Code Sender + toolpath scripts |
 | MicroSD card 32GB (Class 10) | 1 | $8 | Pi OS |
 | USB-A to USB-B cable (2m) | 1 | $6 | Pi to Arduino |
@@ -108,6 +108,7 @@ This is the same modification Nerdtronic used on his painting robot.
 | GRBL 1.1 | Motion controller firmware — flash to Arduino Uno | github.com/gnea/grbl |
 | Universal G-Code Sender (UGS) | Send G-code, jog machine, set home | winder.github.io/ugs_website |
 | toolpath.py (this repo) | Generate G-code from images | — |
+| server.py (this repo) | Browser-based machine control UI — replaces UGS on Pi; open http://raspberrypi.local:5000 | — |
 | Raspberry Pi OS Lite | Headless Pi OS | raspberrypi.com/software |
 | Python 3.9+ | Required for toolpath.py | python.org |
 
@@ -119,7 +120,7 @@ This is the same modification Nerdtronic used on his painting robot.
 2. Install motors, pulleys, and belt — tension to ~3Hz pluck frequency
 3. Print and install pen carriage on X-axis actuator
 4. Wire motors to CNC shield (note coil pairs — wrong wiring = motor hums and won't turn)
-5. Set A4988 Vref: 0.64V for NEMA 17 @ 1.5A (Vref = I × 0.8 × Rsense; Rsense = 0.1Ω on most A4988 boards → Vref = 1.5 × 0.8 × 0.1 = 0.12V... actually use 0.64V for 0.7Ω Rsense boards — measure your board)
+5. Set A4988 Vref: start at 0.64V (≈0.8A on 0.7Ω Rsense boards). If motors stall under belt load, increase to ~1.1V (≈0.8A on 0.1Ω boards — measure your Rsense). Formula: Vref = I × 8 × Rsense. Use a multimeter on the trimpot wiper, motors disconnected, while adjusting.
 6. Flash GRBL to Arduino, configure `$100`/`$101` steps/mm for your pulley/belt combo
 7. Install endstops, test homing cycle (`$H`)
 8. Mount servo, wire to spindle PWM, configure `$30=1000`, `$31=0`

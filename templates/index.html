@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painting Robot</title>
+<style>
+  :root {
+    --bg:      #0d0d0f;
+    --surface: #16171b;
+    --border:  #2a2b30;
+    --accent:  #3ecf8e;
+    --danger:  #e55353;
+    --text:    #e8e8ec;
+    --muted:   #6b6c74;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 12px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  label { display: block; color: var(--muted); margin-bottom: 3px; font-size: 11px; }
+
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    margin-bottom: 10px;
+  }
+
+  input[type="file"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    padding: 5px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+
+  input:focus, select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+
+  button {
+    background: var(--border);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 7px 14px;
+    transition: background 0.15s;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  button:hover  { background: #33343a; }
+  button.accent { background: var(--accent); color: #000; font-weight: 600; }
+  button.accent:hover { background: #2fb97a; }
+  button.danger { background: var(--danger); color: #fff; font-weight: 600; }
+  button.danger:hover { background: #c43b3b; }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .status-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .status-dot.on  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .status-dot.err { background: var(--danger); }
+
+  #status-text { font-size: 12px; }
+
+  progress {
+    width: 100%;
+    height: 6px;
+    border: none;
+    border-radius: 3px;
+    background: var(--border);
+    margin: 8px 0 4px;
+  }
+  progress::-webkit-progress-bar   { background: var(--border); border-radius: 3px; }
+  progress::-webkit-progress-value { background: var(--accent); border-radius: 3px; }
+
+  #progress-label { font-size: 11px; color: var(--muted); }
+
+  /* Jog pad */
+  .jog-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 5px;
+    width: 150px;
+    margin: 0 auto 10px;
+  }
+  .jog-grid button { margin: 0; padding: 10px 0; font-size: 14px; }
+  .jog-grid .center { background: var(--bg); border: 1px solid var(--border); cursor: default; }
+  .jog-grid .center:hover { background: var(--bg); }
+
+  .jog-step { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .jog-step button { width: auto; padding: 4px 10px; font-size: 11px; margin: 0; }
+  .jog-step button.active { background: var(--accent); color: #000; }
+
+  /* Console */
+  #console {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    height: 180px;
+    overflow-y: auto;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #aaa;
+    margin-bottom: 8px;
+  }
+  #console .ok   { color: var(--accent); }
+  #console .err  { color: var(--danger); }
+  #console .sent { color: var(--text); }
+
+  #cmd-row { display: flex; gap: 6px; }
+  #cmd-input { flex: 1; margin: 0; }
+  #cmd-send { width: auto; margin: 0; }
+
+  /* Mode params */
+  .mode-params { display: none; }
+  .mode-params.active { display: block; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Stats */
+  #stats { font-size: 11px; color: var(--muted); min-height: 18px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Painting Robot — Modology Studios</h1>
+
+<div class="grid">
+
+  <!-- LEFT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+
+    <!-- Connection -->
+    <div class="panel">
+      <div class="panel-title">Connection</div>
+      <div class="row">
+        <div>
+          <label>Port</label>
+          <select id="port-select"><option value="">— scan —</option></select>
+        </div>
+        <div>
+          <label>Baud</label>
+          <select id="baud-select">
+            <option value="115200" selected>115200</option>
+            <option value="9600">9600</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <button id="btn-scan"       onclick="scanPorts()">Scan</button>
+        <button id="btn-connect"    onclick="connectSerial()" class="accent">Connect</button>
+        <button id="btn-disconnect" onclick="disconnectSerial()" style="display:none" class="danger">Disconnect</button>
+      </div>
+      <div>
+        <span class="status-dot" id="dot"></span>
+        <span id="status-text">Not connected</span>
+      </div>
+    </div>
+
+    <!-- Jog -->
+    <div class="panel">
+      <div class="panel-title">Jog</div>
+      <div class="jog-grid">
+        <div></div>
+        <button onclick="jog('Y', +stepSize())">&#9650;</button>
+        <div></div>
+        <button onclick="jog('X', -stepSize())">&#9668;</button>
+        <div class="center"></div>
+        <button onclick="jog('X', +stepSize())">&#9658;</button>
+        <div></div>
+        <button onclick="jog('Y', -stepSize())">&#9660;</button>
+        <div></div>
+      </div>
+      <div class="jog-step" id="jog-steps">
+        <button onclick="setStep(this, 1)"    data-step="1">1mm</button>
+        <button onclick="setStep(this, 10)"   data-step="10"  class="active">10mm</button>
+        <button onclick="setStep(this, 50)"   data-step="50">50mm</button>
+        <button onclick="setStep(this, 100)"  data-step="100">100mm</button>
+      </div>
+      <button onclick="sendHome()">Home ($H)</button>
+    </div>
+
+    <!-- Console -->
+    <div class="panel">
+      <div class="panel-title">Console</div>
+      <div id="console"></div>
+      <div id="cmd-row">
+        <input id="cmd-input" type="text" placeholder="e.g. $$ or ? or G0 X10 Y10" onkeydown="if(event.key==='Enter')sendCmd()">
+        <button id="cmd-send" onclick="sendCmd()">Send</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+
+    <!-- Generate -->
+    <div class="panel">
+      <div class="panel-title">Generate Toolpath</div>
+
+      <label>Image</label>
+      <input type="file" id="img-input" accept="image/*">
+
+      <label>Mode</label>
+      <select id="mode-select" onchange="updateModeParams()">
+        <option value="edges">Edges (Canny contours)</option>
+        <option value="dots">Dots (stipple fill)</option>
+        <option value="hatch">Hatch (raster scan)</option>
+      </select>
+
+      <!-- Canvas -->
+      <div class="row">
+        <div><label>Canvas W (mm)</label><input type="number" id="canvas-w" value="1220"></div>
+        <div><label>Canvas H (mm)</label><input type="number" id="canvas-h" value="1524"></div>
+      </div>
+
+      <!-- Feed -->
+      <div class="row">
+        <div><label>Feed draw (mm/min)</label><input type="number" id="feed-draw" value="3000"></div>
+        <div><label>Feed travel (mm/min)</label><input type="number" id="feed-travel" value="8000"></div>
+      </div>
+
+      <div class="row">
+        <div><label>Backlash (mm)</label><input type="number" id="backlash" value="0.4" step="0.05"></div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:10px;">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;">
+            <input type="checkbox" id="invert"> Invert image
+          </label>
+        </div>
+      </div>
+
+      <!-- Edges params -->
+      <div id="params-edges" class="mode-params active">
+        <div class="row">
+          <div><label>Canny low</label><input type="number" id="canny-low" value="50"></div>
+          <div><label>Canny high</label><input type="number" id="canny-high" value="150"></div>
+          <div><label>Blur (px)</label><input type="number" id="blur" value="3"></div>
+        </div>
+      </div>
+
+      <!-- Dots params -->
+      <div id="params-dots" class="mode-params">
+        <div class="row">
+          <div><label>Dot spacing (mm)</label><input type="number" id="dot-spacing" value="4.0" step="0.5"></div>
+          <div><label>Dot radius (mm)</label><input type="number" id="dot-radius" value="1.2" step="0.1"></div>
+        </div>
+        <label>Darkness threshold (0–255)</label>
+        <input type="number" id="threshold-dots" value="128" min="0" max="255">
+      </div>
+
+      <!-- Hatch params -->
+      <div id="params-hatch" class="mode-params">
+        <div class="row">
+          <div><label>Line spacing (mm)</label><input type="number" id="line-spacing" value="1.5" step="0.5"></div>
+          <div><label>Darkness threshold (0–255)</label><input type="number" id="threshold-hatch" value="128" min="0" max="255"></div>
+        </div>
+      </div>
+
+      <button id="btn-generate" class="accent" onclick="generate()">Generate G-code</button>
+      <div id="stats"></div>
+    </div>
+
+    <!-- Send -->
+    <div class="panel">
+      <div class="panel-title">Send to Machine</div>
+      <div id="gcode-file" style="color:var(--muted);font-size:11px;margin-bottom:8px;">No G-code generated yet.</div>
+      <div class="row">
+        <button id="btn-send" class="accent" onclick="sendGcode()" disabled>Send</button>
+        <button id="btn-stop" class="danger" onclick="stopStream()" disabled>Stop</button>
+      </div>
+      <progress id="progress-bar" value="0" max="100"></progress>
+      <div id="progress-label">—</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let gcodeFile = null;
+  let _step = 10;
+
+  // ── SSE ────────────────────────────────────────────────────────────────────
+
+  const evtSource = new EventSource("/events");
+
+  evtSource.addEventListener("progress", e => {
+    const [cur, tot] = e.data.split("/").map(Number);
+    const pct = tot ? Math.round(cur / tot * 100) : 0;
+    document.getElementById("progress-bar").value = pct;
+    document.getElementById("progress-label").textContent = `${cur} / ${tot} lines (${pct}%)`;
+  });
+
+  evtSource.addEventListener("status", e => {
+    const s = e.data;
+    if (s === "done") {
+      log("ok", "Stream complete.");
+      document.getElementById("btn-send").disabled = false;
+      document.getElementById("btn-stop").disabled = true;
+    } else if (s === "stopped") {
+      log("err", "Stream stopped.");
+      document.getElementById("btn-send").disabled = false;
+      document.getElementById("btn-stop").disabled = true;
+    } else if (s === "connected") {
+      setConnected(true);
+    } else if (s === "disconnected") {
+      setConnected(false);
+    } else if (s === "homing") {
+      log("ok", "Homing…");
+    }
+  });
+
+  evtSource.addEventListener("error", e => {
+    log("err", e.data || "Unknown error");
+  });
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+
+  function log(cls, msg) {
+    const c = document.getElementById("console");
+    const line = document.createElement("div");
+    line.className = cls;
+    line.textContent = `> ${msg}`;
+    c.appendChild(line);
+    c.scrollTop = c.scrollHeight;
+  }
+
+  function setConnected(on) {
+    document.getElementById("dot").className = "status-dot" + (on ? " on" : "");
+    document.getElementById("status-text").textContent = on
+      ? `Connected to ${document.getElementById("port-select").value}`
+      : "Not connected";
+    document.getElementById("btn-connect").style.display    = on ? "none" : "";
+    document.getElementById("btn-disconnect").style.display = on ? "" : "none";
+  }
+
+  function updateModeParams() {
+    const mode = document.getElementById("mode-select").value;
+    ["edges","dots","hatch"].forEach(m => {
+      document.getElementById(`params-${m}`).classList.toggle("active", m === mode);
+    });
+  }
+
+  function stepSize() { return _step; }
+
+  function setStep(btn, v) {
+    _step = v;
+    document.querySelectorAll("#jog-steps button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  // ── API calls ──────────────────────────────────────────────────────────────
+
+  async function scanPorts() {
+    const r = await fetch("/ports").then(r => r.json());
+    const sel = document.getElementById("port-select");
+    sel.innerHTML = r.ports.length
+      ? r.ports.map(p => `<option value="${p}">${p}</option>`).join("")
+      : `<option value="">No ports found</option>`;
+  }
+
+  async function connectSerial() {
+    const port = document.getElementById("port-select").value;
+    const baud = document.getElementById("baud-select").value;
+    if (!port) { log("err", "Select a port first."); return; }
+    log("sent", `Connecting to ${port}…`);
+    const r = await fetch("/connect", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({port, baud}),
+    }).then(r => r.json());
+    if (r.ok) {
+      log("ok", `Connected to ${port}`);
+      setConnected(true);
+    } else {
+      log("err", r.error);
+    }
+  }
+
+  async function disconnectSerial() {
+    await fetch("/disconnect", {method:"POST"});
+    setConnected(false);
+    log("ok", "Disconnected.");
+  }
+
+  async function generate() {
+    const imgInput = document.getElementById("img-input");
+    if (!imgInput.files.length) { log("err", "Upload an image first."); return; }
+
+    const btn = document.getElementById("btn-generate");
+    btn.disabled = true;
+    btn.textContent = "Generating…";
+
+    const fd = new FormData();
+    fd.append("image", imgInput.files[0]);
+    fd.append("mode",         document.getElementById("mode-select").value);
+    fd.append("canvas_w",     document.getElementById("canvas-w").value);
+    fd.append("canvas_h",     document.getElementById("canvas-h").value);
+    fd.append("feed_draw",    document.getElementById("feed-draw").value);
+    fd.append("feed_travel",  document.getElementById("feed-travel").value);
+    fd.append("backlash",     document.getElementById("backlash").value);
+    fd.append("canny_low",    document.getElementById("canny-low").value);
+    fd.append("canny_high",   document.getElementById("canny-high").value);
+    fd.append("blur",         document.getElementById("blur").value);
+    fd.append("dot_spacing",  document.getElementById("dot-spacing").value);
+    fd.append("dot_radius",   document.getElementById("dot-radius").value);
+    fd.append("line_spacing", document.getElementById("line-spacing").value);
+    fd.append("threshold",    document.getElementById("mode-select").value === "dots"
+                                ? document.getElementById("threshold-dots").value
+                                : document.getElementById("threshold-hatch").value);
+    fd.append("invert",       document.getElementById("invert").checked ? "true" : "false");
+
+    try {
+      const r = await fetch("/generate", {method:"POST", body: fd}).then(r => r.json());
+      if (r.ok) {
+        gcodeFile = r.gcode_path;
+        document.getElementById("gcode-file").textContent = `${gcodeFile} — ${r.line_count} lines`;
+        document.getElementById("stats").textContent = r.stdout;
+        document.getElementById("btn-send").disabled = false;
+        log("ok", `Generated: ${r.line_count} G-code lines`);
+      } else {
+        log("err", r.error);
+      }
+    } catch(e) {
+      log("err", String(e));
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Generate G-code";
+  }
+
+  async function sendGcode() {
+    if (!gcodeFile) { log("err", "Generate G-code first."); return; }
+    const r = await fetch("/send", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({gcode_path: gcodeFile}),
+    }).then(r => r.json());
+    if (r.ok) {
+      log("sent", "Streaming started…");
+      document.getElementById("btn-send").disabled = true;
+      document.getElementById("btn-stop").disabled = false;
+    } else {
+      log("err", r.error);
+    }
+  }
+
+  async function stopStream() {
+    await fetch("/stop", {method:"POST"});
+    log("err", "Stop sent.");
+  }
+
+  async function sendHome() {
+    const r = await fetch("/home", {method:"POST"}).then(r => r.json());
+    if (!r.ok) log("err", r.error || "Home failed");
+  }
+
+  async function jog(axis, dist) {
+    const r = await fetch("/jog", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({axis, dist, feed: 3000}),
+    }).then(r => r.json());
+    if (!r.ok) log("err", r.error || "Jog failed");
+  }
+
+  async function sendCmd() {
+    const input = document.getElementById("cmd-input");
+    const raw = input.value.trim();
+    if (!raw) return;
+    log("sent", raw);
+    input.value = "";
+    const r = await fetch("/cmd", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({cmd: raw}),
+    }).then(r => r.json());
+    if (r.ok && r.response) log("ok", r.response);
+    else if (!r.ok) log("err", r.error || "Failed");
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+
+  (async () => {
+    await scanPorts();
+    const s = await fetch("/status").then(r => r.json());
+    if (s.connected) setConnected(true);
+  })();
+</script>
+</body>
+</html>
