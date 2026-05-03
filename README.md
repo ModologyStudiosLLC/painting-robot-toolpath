@@ -16,6 +16,33 @@ Requires Python 3.9+.
 
 ---
 
+## FLUX Image Generation
+
+`generate.py` connects FLUX (via Replicate) to the toolpath pipeline — one command from text prompt to machine-ready G-code.
+
+```bash
+pip install replicate
+export REPLICATE_API_TOKEN=your_token   # replicate.com → account settings
+```
+
+```bash
+# Prompt → G-code in one step
+python3 generate.py "noir portrait of a woman" --mode edges
+
+# Use an existing photo instead (skip generation)
+python3 generate.py --image photo.jpg --mode dots
+
+# Save the generated image alongside the gcode
+python3 generate.py "bold geometric cityscape" --mode hatch --save-image city.png
+
+# All toolpath flags pass through
+python3 generate.py "abstract waves" --mode edges --canny-low 30 --canny-high 100
+```
+
+FLUX generates at 4:5 aspect ratio to match the 4×5ft canvas. The generated image is saved automatically as `generated_<slug>.png` next to the gcode unless `--save-image` is specified.
+
+---
+
 ## Usage
 
 ```bash
